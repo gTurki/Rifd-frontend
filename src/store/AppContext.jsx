@@ -156,6 +156,8 @@ export function AppProvider({ children }) {
   // ---------------- live ----------------
   const pageRef = useRef(page); pageRef.current = page;
   const langRef = useRef(lang); langRef.current = lang;
+  // my team: notifications sent to a whole specialty (e.g. the accessibility team) are mine too
+  const specRef = useRef(null); specRef.current = ((data.staff.find(s => s.id === me)) || {}).specialty || null;
   useEffect(() => {
     if (!auth) return undefined;
     const field = auth.role === 'FIELD';
@@ -174,7 +176,10 @@ export function AppProvider({ children }) {
         refreshActivity();
       } else if (topic === '/topic/alerts' && !field) {
         setData(d => ({ ...d, alerts: upsert(d.alerts, p) }));
-      } else if (topic === '/topic/stats' && !field) {
+      } else if (topic === '/topic/stats' && field) {
+        // the reset deletes every task without a task message: reload, or the field app keeps ghost tasks
+        if (type === 'SIMULATION_RESET') { setUnread(0); loadAll(); }
+      } else if (topic === '/topic/stats') {
         if (type === 'STATS_UPDATED') setData(d => ({ ...d, stats: p }));
         if (type === 'SIMULATION_RESET') { setBell([]); setUnread(0); setSel(null); loadAll(); toast('info', tt('أُعيد ضبط المحاكاة', 'Simulation reset'), ''); }
         if (type === 'SIMULATION_STARTED') { api.simStatus().then(s => setData(d => ({ ...d, sim: s }))).catch(() => {}); toast('info', tt('بدأت المحاكاة', 'Simulation started'), ''); }
@@ -197,7 +202,7 @@ export function AppProvider({ children }) {
         else setData(d => ({ ...d, routes: upsert(d.routes, p) }));
         refreshActivity();
       } else if (topic === '/topic/notifications') {
-        const mine = p.recipientStaffId === auth.staffId;
+        const mine = p.recipientStaffId === auth.staffId || (p.recipientSpecialty != null && p.recipientSpecialty === specRef.current);
         if (!mine) return;
         setData(d => ({ ...d, notifications: upsert(d.notifications, p) }));
         setUnread(u => u + 1);

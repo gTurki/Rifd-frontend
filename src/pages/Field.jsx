@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { useApp } from '../store/AppContext.jsx';
 import { Icon, Pill, Dropdown, ReasonForm } from '../components/ui.jsx';
 import { api } from '../lib/api.js';
-import { MediaPicker, Spinner, emptyMedia, hasMedia, heardFrom } from '../components/MediaPicker.jsx';
+import { MediaPicker, Spinner, emptyMedia, hasMedia } from '../components/MediaPicker.jsx';
 import { SEV_KEY, STATUS, STEPS, TASK_KEY, TASK_ST, NEXT_TASK, ACTIVE_TASK, REPORT_TYPES, hm } from '../lib/labels.js';
 import { ZONE_AR } from '../map/geometry.js';
+
+const UNKNOWN = '?'; // "I don't know" in the zone dropdowns: sent as no zone
 
 export function MyTasks() {
   const { data, me, T, L, run, refreshTasks, showOnMap } = useApp();
@@ -67,11 +69,22 @@ export function Report() {
   const [sent, setSent] = useState([]);
   const [busy, setBusy] = useState(false);
   const [media, setMedia] = useState(emptyMedia);
+  // preview before sending (voice note or unknown zone): { draftId, hasVoice, transcript, zoneCode, zoneGuessed, needsLocation, edit, zone }
+  const [review, setReview] = useState(null);
   const self = data.staff.find(s => s.id === me);
   const set = (k, v) => { setD(o => ({ ...o, [k]: v })); setErr(e => e.filter(x => x !== k)); };
   const f = (k, label, input, req, wide) => <div className={'field' + (err.includes(k) ? ' bad' : '') + (wide ? ' wide' : '')}><label htmlFor={'rf-' + k}>{label}{req ? <> <i className="req">*</i></> : null}</label>{input}</div>;
+  const zoneOf = v => (v && v !== UNKNOWN ? v : null);
+  const done = (r, zone, heard) => {
+    setSent(s => [{ ...d, zone: zone || T('غير محدد', 'unknown'), files: { photos: media.photos.length, audio: !!media.audio }, heard, at: new Date() }, ...s]);
+    setD({}); setMedia(emptyMedia()); setReview(null);
+    toast('ok', T('وصل بلاغك', 'Report sent'), heard ? T(`وصل بهذا الكلام: «${heard}»`, `Sent with: "${heard}"`)
+      : media.audio ? T('وصل التسجيل، بس ما قدرنا نفرّغه. غرفة العمليات بتسمعه.', 'Voice note received; the operations room will listen to it.')
+        : T('وصل لغرفة العمليات.', 'Your report reached the operations center.'));
+  };
   const submit = async e => {
     e.preventDefault();
+    if (review) { await confirm(); return; }
     // the description is optional when a photo or voice note is attached (decision 149)
     const missing = ['type', 'zone', ...(hasMedia(media) ? [] : ['desc'])].filter(k => !(d[k] || '').trim());
     if (missing.length) { setErr(missing); return; }
@@ -80,38 +93,65 @@ export function Report() {
     const desc = (d.desc || '').trim();
     const text = `${REPORT_TYPES[d.type][0]}${desc ? ': ' + desc : ''}${d.spot ? ' — ' + d.spot.trim() : ''}`;
     const sourceReference = 'staff:' + (self ? self.employeeNumber : me);
-    const files = { photos: media.photos.length, audio: !!media.audio };
+    const zone = zoneOf(d.zone);
     try {
-      const r = hasMedia(media)
-        ? await api.sendAlertMedia({ sourceReference, text, language: 'ar', zoneCode: d.zone }, media.photos, media.audio && media.audio.blob)
-        : await api.sendAlert({ source: 'STAFF_APP', sourceReference, text, language: 'ar', zoneCode: d.zone });
-      const heard = media.audio ? heardFrom(r && r.rawText) : null;
-      setSent(s => [{ ...d, files, heard, at: new Date() }, ...s]); setD({}); setMedia(emptyMedia());
-      toast('ok', T('وصل بلاغك', 'Report sent'), heard ? T(`فهمنا من تسجيلك: «${heard}»`, `From your voice note: "${heard}"`)
-        : media.audio ? T('وصل التسجيل، بس ما قدرنا نفرّغه. غرفة العمليات بتسمعه.', 'Voice note received; the operations room will listen to it.')
-          : T('وصل لغرفة العمليات.', 'Your report reached the operations center.'));
+      if (media.audio || !zone) {
+        // voice note or unknown zone: show what we heard / ask where before anything is sent
+        const p = await api.alertPreview({ sourceReference, text, language: 'ar', zoneCode: zone }, media.photos, media.audio && media.audio.blob);
+        setReview({ ...p, edit: p.transcript || '', zone: p.zoneCode || (p.needsLocation ? '' : null) });
+      } else {
+        const r = hasMedia(media)
+          ? await api.sendAlertMedia({ sourceReference, text, language: 'ar', zoneCode: zone }, media.photos, null)
+          : await api.sendAlert({ source: 'STAFF_APP', sourceReference, text, language: 'ar', zoneCode: zone });
+        done(r, zone, null);
+      }
     } catch (ex) { fail(ex); }
     setBusy(false);
   };
+  const confirm = async () => {
+    const zone = zoneOf(d.zone) || zoneOf(review.zone);
+    // '' = not answered yet, null = "I don't know" (allowed)
+    if (!zoneOf(d.zone) && review.zone === '') { setErr(['rzone']); return; }
+    setBusy(true);
+    try {
+      const r = await api.alertConfirm({ draftId: review.draftId, transcript: review.edit, zoneCode: zone });
+      done(r, zone, review.hasVoice ? (review.edit.trim() || review.transcript || null) : null);
+    } catch (ex) {
+      fail(ex);
+      // review expired (every backend error is a 400, so match the message): send it again; otherwise retry as is
+      if (/انتهت مهلة/.test(ex.message || '')) setReview(null);
+    }
+    setBusy(false);
+  };
   const zones = data.zones.map(z => [z.code, `${z.code} · ${lang === 'ar' ? ZONE_AR[z.code] || z.name : z.name}`]);
+  const zoneChoices = [...zones, [UNKNOWN, T('ما أعرف', "I don't know")]];
   return (
     <>
       <div className="ph"><div><h1>{T('رفع بلاغ', 'Report an issue')}</h1></div></div>
       <section className="panel"><div className="panel-h"><h2>{T('بلاغ جديد لغرفة العمليات', 'New report to the operations center')}</h2></div>
         <form className="panel-b emp-form" autoComplete="off" noValidate onSubmit={submit}>
-          <div className="form-grid">
+          {review ? <div className="form-grid">
+            {review.hasVoice && f('edit', review.transcript ? T('هذا اللي فهمناه من تسجيلك، تقدر تعدّله', 'What we heard; you can correct it')
+              : T('ما قدرنا نفرّغ التسجيل، اكتب وش قلت إذا تبي', 'Could not transcribe it; type what you said if you like'),
+              <textarea id="rf-edit" rows={3} maxLength={1000} value={review.edit} onChange={e => setReview(r => ({ ...r, edit: e.target.value }))} />, false, true)}
+            {!zoneOf(d.zone) && f('rzone', review.zoneGuessed ? T('فهمنا إن المكان هنا، غيّره إذا غلط', 'We think it is here; change it if wrong') : T('ما عرفنا المنطقة، اخترها', 'We could not tell the zone; pick it'),
+              <Dropdown id="rf-rzone" value={review.zone === null ? UNKNOWN : review.zone} onChange={v => { setReview(r => ({ ...r, zone: v === UNKNOWN ? null : v })); setErr([]); }}
+                placeholder={T('اختر المنطقة', 'Choose zone')} options={zoneChoices} />, true, true)}
+          </div> : <div className="form-grid">
             {f('type', T('نوع البلاغ', 'Type'), <Dropdown id="rf-type" value={d.type} onChange={v => set('type', v)} placeholder={T('اختر نوعه', 'Choose type')} options={Object.entries(REPORT_TYPES).map(([k, n]) => [k, L(n)])} />, true)}
-            {f('zone', T('المنطقة', 'Zone'), <Dropdown id="rf-zone" value={d.zone} onChange={v => set('zone', v)} placeholder={T('اختر المنطقة', 'Choose zone')} options={zones} />, true)}
+            {f('zone', T('المنطقة', 'Zone'), <Dropdown id="rf-zone" value={d.zone} onChange={v => set('zone', v)} placeholder={T('اختر المنطقة', 'Choose zone')} options={zoneChoices} />, true)}
             {f('spot', T('وين بالضبط', 'Exact spot'), <input id="rf-spot" value={d.spot || ''} onChange={e => set('spot', e.target.value)} placeholder={T('الجناح B — المدخل الشرقي', 'Pavilion B — east entrance')} />)}
             {f('desc', T('وش صار', 'Description'), <textarea id="rf-desc" rows={4} value={d.desc || ''} onChange={e => set('desc', e.target.value)} />, !hasMedia(media), true)}
             <div className="field wide"><label>{T('صور أو تسجيل صوتي', 'Photos or a voice note')}</label>
               <MediaPicker value={media} onChange={m => { setMedia(m); setErr(e => e.filter(x => x !== 'desc')); }} disabled={busy} /></div>
-          </div>
+          </div>}
           {err.length ? <p className="form-err">{T('كمّل الخانات المطلوبة', 'Complete the required fields')}</p> : null}
           <div className="form-actions"><button type="submit" className={'btn btn-primary' + (busy ? ' is-busy' : '')} disabled={busy}>{busy
-            ? <><Spinner s={16} />{hasMedia(media) ? T('نحلل المرفقات...', 'Analyzing attachments...') : T('نرسل البلاغ...', 'Sending...')}</>
-            : <><Icon n="arrow" s={17} flip />{T('أرسل البلاغ', 'Send report')}</>}</button>
-            {busy && hasMedia(media) ? <span className="vwait">{T('ممكن ياخذ لين 15 ثانية، لا تسكّر الصفحة.', 'This can take up to 15 seconds.')}</span> : null}</div>
+            ? <><Spinner s={16} />{hasMedia(media) && !review ? T('نحلل المرفقات...', 'Analyzing attachments...') : T('نرسل البلاغ...', 'Sending...')}</>
+            : <><Icon n="arrow" s={17} flip />{!review && (media.audio || !zoneOf(d.zone)) ? T('التالي', 'Next') : T('أرسل البلاغ', 'Send report')}</>}</button>
+            {review && review.hasVoice ? <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => { setReview(null); setMedia(m => ({ ...m, audio: null })); setErr([]); }}><Icon n="mic" s={16} />{T('سجّل مرة ثانية', 'Record again')}</button> : null}
+            {review ? <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => { setReview(null); setErr([]); }}>{T('رجوع للبلاغ', 'Back to the report')}</button> : null}
+            {busy && hasMedia(media) && !review ? <span className="vwait">{T('ممكن ياخذ لين 15 ثانية، لا تسكّر الصفحة.', 'This can take up to 15 seconds.')}</span> : null}</div>
         </form></section>
       {sent.length ? <section className="panel"><div className="panel-h"><h2>{T('بلاغاتي اللي أرسلتها', 'My reports')}</h2></div><div className="q">
         {sent.map((r, k) => <div className="q-item" key={k} style={{ cursor: 'default' }}><span className="sev-bar" style={{ background: 'var(--info)' }} />

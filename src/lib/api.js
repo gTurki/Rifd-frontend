@@ -113,6 +113,9 @@ export const api = {
   dismissAlert: (id, reason, actorStaffId) => post(`/alerts/${id}/dismiss`, { reason, actorStaffId }),
   sendAlert: dto => post('/alerts', dto, { auth: false }),
   sendAlertMedia: (dto, photos, audio) => upload('/alerts/media', toForm(dto, photos, audio), { auth: false }),
+  // two steps: preview (what we heard + where, nothing sent yet) -> confirm { draftId, transcript, zoneCode }
+  alertPreview: (dto, photos, audio) => upload('/alerts/preview', toForm(dto, photos, audio), { auth: false }),
+  alertConfirm: dto => post('/alerts/confirm', dto, { auth: false }),
   // binary: fetched with the token, shown through an object URL (<img src> cannot send the token)
   attachmentUrl: async (id, index = 0) => {
     const res = await fetch(`${BASE}/alerts/${id}/attachment?index=${index}`, { headers: token ? { Authorization: 'Bearer ' + token } : {} });
@@ -165,5 +168,7 @@ export const api = {
   publicZones: () => get('/zones', { auth: false }),
   visitorReport: dto => post('/visitor-reports', dto, { auth: false }),
   visitorReportMedia: (dto, photos, audio) => upload('/visitor-reports/media', toForm(dto, photos, audio), { auth: false }),
+  visitorPreview: (dto, photos, audio) => upload('/visitor-reports/preview', toForm(dto, photos, audio), { auth: false }),
+  visitorConfirm: dto => post('/visitor-reports/confirm', dto, { auth: false }),
   trackReport: code => get(`/visitor-reports/${encodeURIComponent(code)}`, { auth: false }),
 };

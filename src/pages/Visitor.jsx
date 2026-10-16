@@ -55,6 +55,8 @@ export function Visitor() {
   const [last, setLast] = useState(null);
   const [busy, setBusy] = useState(false);
   const [media, setMedia] = useState(emptyMedia);
+  // preview before sending (voice note or unknown place): { draftId, hasVoice, transcript, zoneCode, zoneGuessed, needsLocation, edit, zone, unknown }
+  const [review, setReview] = useState(null);
 
   useEffect(() => { api.publicZones().then(setZones).catch(() => {}); api.routes().then(setRoutes).catch(() => {}); }, []);
   // refresh the status of saved reports every few seconds
@@ -73,27 +75,53 @@ export function Visitor() {
     const nd = {};
     if (qr) { nd.zone = 'PB'; nd.spot = T('الجناح B — المدخل الرئيسي', 'Pavilion B — main entrance'); nd.by = 'qr'; }
     if (type) nd.type = type;
-    setD(nd); setMedia(emptyMedia()); setErr(''); setMenu(false); setView('report'); setStep(type ? 2 : 1); window.scrollTo(0, 0);
+    setD(nd); setMedia(emptyMedia()); setReview(null); setErr(''); setMenu(false); setView('report'); setStep(type ? 2 : 1); window.scrollTo(0, 0);
   };
-  const zName = code => { const z = zones.find(o => o.code === code); return z ? (lang === 'ar' ? ZONE_AR[z.code] || z.name : z.name) : code; };
+  const zName = code => { if (!code) return T('المكان غير محدد', 'Place not given'); const z = zones.find(o => o.code === code); return z ? (lang === 'ar' ? ZONE_AR[z.code] || z.name : z.name) : code; };
+  const saved = (r, zone, heard) => {
+    // heard = what we understood from the voice note, kept so "My reports" can show it too
+    const item = { ...r, code: r.trackingCode, type: d.type, zone: r.zoneCode || zone || null, at: new Date().toISOString(), voice: !!media.audio, heard: heard || null };
+    const list = [item, ...reports]; setReports(list); saveReports(list);
+    setLast(item.code); setD({}); setMedia(emptyMedia()); setReview(null); setStep(1); go('done');
+  };
   const next = async () => {
     if (step === 1 && !d.type) { setErr(T('اختر وش المشكلة', 'Choose the problem')); return; }
-    if (step === 2 && !d.zone) { setErr(T('اختر المنطقة', 'Pick the zone')); return; }
+    if (step === 2 && !d.zone && !d.unknown) { setErr(T('اختر المنطقة', 'Pick the zone')); return; }
     if (step < 3) { setStep(step + 1); setErr(''); window.scrollTo(0, 0); return; }
+    if (review) { await confirm(); return; }
     const t = VIS_TYPES[d.type];
     const text = `بلاغ زائر: ${t.n[0]}${d.spot ? ' — ' + d.spot.trim() : ''}${d.desc ? ': ' + d.desc.trim() : ''}`;
-    setBusy(true);
+    setBusy(true); setErr('');
     try {
-      // with photos / a voice note: multipart, the backend analyzes them and appends the result to the text (decision 151)
       const dto = { text, language: 'ar', zoneCode: d.zone };
-      const r = hasMedia(media) ? await api.visitorReportMedia(dto, media.photos, media.audio && media.audio.blob) : await api.visitorReport(dto);
-      // heard = what we understood from the voice note, kept so "My reports" can show it too
-      const item = { ...r, code: r.trackingCode, type: d.type, zone: d.zone, at: new Date().toISOString(), voice: !!media.audio, heard: r.transcript || null };
-      const list = [item, ...reports]; setReports(list); saveReports(list);
-      setLast(item.code); setD({}); setMedia(emptyMedia()); setStep(1); go('done');
+      if (media.audio || !d.zone) {
+        // voice note or unknown place: show what we heard / ask where before anything is sent
+        const p = await api.visitorPreview(dto, media.photos, media.audio && media.audio.blob);
+        setReview({ ...p, edit: p.transcript || '', zone: p.zoneCode || null, unknown: false }); window.scrollTo(0, 0);
+      } else {
+        // photos only (decision 151) or text: sent directly, as before
+        const r = hasMedia(media) ? await api.visitorReportMedia(dto, media.photos, null) : await api.visitorReport(dto);
+        saved(r, d.zone, null);
+      }
     } catch (e) { fail(e); }
     setBusy(false);
   };
+  const confirm = async () => {
+    const zone = d.zone || review.zone || null;
+    if (!d.zone && review.needsLocation && !review.zone && !review.unknown) { setErr(T('اختر المنطقة أو «ما أعرف»', 'Pick the zone or "I don\'t know"')); return; }
+    setBusy(true); setErr('');
+    try {
+      const r = await api.visitorConfirm({ draftId: review.draftId, transcript: review.edit, zoneCode: zone });
+      saved(r, zone, r.transcript);
+    } catch (e) {
+      fail(e);
+      // review expired (the backend answers 400 for every error, so match the message): the visitor sends it again.
+      // any other failure keeps the review: the backend kept the draft, pressing send retries it
+      if (/انتهت مهلة/.test(e.message || '')) setReview(null);
+    }
+    setBusy(false);
+  };
+  const reRecord = () => { setReview(null); setMedia(m => ({ ...m, audio: null })); setErr(''); };
 
   const wayCard = (w, full) => (
     <article className="vway" key={w.k}><span className="vway-ic"><Icon n={w.i} s={22} /></span><div className="vway-b"><b>{L(w.n)}</b>{full ? <p>{L(w.d)}</p> : null}</div>
@@ -107,10 +135,10 @@ export function Visitor() {
     const titles = [T('وش المشكلة؟', 'What is the problem?'), T('وين المشكلة؟', 'Where is it?'), T('تبي تضيف شي؟', 'A few details')];
     body = (
       <>
-        <div className="vstep-h"><button className="vback" aria-label={T('رجوع', 'Back')} onClick={() => (step > 1 ? (setStep(step - 1), setErr('')) : go('home'))}><Icon n="arrow" s={18} /></button>
+        <div className="vstep-h"><button className="vback" aria-label={T('رجوع', 'Back')} disabled={busy} onClick={() => (review ? (setReview(null), setErr('')) : step > 1 ? (setStep(step - 1), setErr('')) : go('home'))}><Icon n="arrow" s={18} /></button>
           <span>{T('بلّغ عن مشكلة', 'Report a problem')}</span><small className="mono">{step} / 3</small></div>
         <div className="vprog">{[1, 2, 3].map(k => <i key={k} className={k <= step ? 'on' : ''} />)}</div>
-        <h1 className="vq">{titles[step - 1]}</h1>
+        <h1 className="vq">{review ? T('تأكد من بلاغك قبل نرسله', 'Check your report before we send it') : titles[step - 1]}</h1>
         {step === 1 && <div className="vtiles">{Object.entries(VIS_TYPES).map(([k, ty]) => (
           <button key={k} className={'vtile' + (ty.urgent ? ' urg' : '') + (d.type === k ? ' sel' : '')} onClick={() => { setD(o => ({ ...o, type: k })); setErr(''); setStep(2); window.scrollTo(0, 0); }}>
             <span className="vt-ic"><Icon n={ty.i} s={24} /></span><b>{L(ty.n)}</b></button>))}</div>}
@@ -118,11 +146,31 @@ export function Visitor() {
           {d.by === 'qr' && <div className="vok"><Icon n="qr" s={20} /><span><b>{T('عرفنا مكانك من رمز QR', 'Location taken from the QR code')}</b><small>{zName(d.zone)} · {d.spot}</small></span></div>}
           <p className="vor">{T('اختر المنطقة', 'Pick the zone')}</p>
           <div className="vzones">{zones.map(z => (
-            <button key={z.code} className={'vzone' + (d.zone === z.code ? ' sel' : '')} onClick={() => { setD(o => ({ ...o, zone: z.code, by: 'manual' })); setErr(''); }}>
-              <span className="mono">{z.code}</span>{lang === 'ar' ? ZONE_AR[z.code] || z.name : z.name}</button>))}</div>
+            <button key={z.code} className={'vzone' + (d.zone === z.code ? ' sel' : '')} onClick={() => { setD(o => ({ ...o, zone: z.code, unknown: false, by: 'manual' })); setErr(''); }}>
+              <span className="mono">{z.code}</span>{lang === 'ar' ? ZONE_AR[z.code] || z.name : z.name}</button>))}
+            <button className={'vzone' + (d.unknown ? ' sel' : '')} onClick={() => { setD(o => ({ ...o, zone: undefined, unknown: true, by: 'unknown' })); setErr(''); }}>
+              <span className="mono">?</span>{T('ما أعرف', "I don't know")}</button></div>
           <label className="vfield"><span>{T('وش أقرب شي عندك؟', 'Nearest landmark')}</span><input value={d.spot || ''} onChange={e => setD(o => ({ ...o, spot: e.target.value }))} /></label>
         </>}
-        {step === 3 && t && <>
+        {step === 3 && t && review && <>
+          <div className="vsum"><span className="vt-ic"><Icon n={t.i} s={20} /></span><span><b>{L(t.n)}</b><small>{zName(d.zone || review.zone)}{d.spot ? ' · ' + d.spot : ''}</small></span></div>
+          {review.hasVoice && <label className="vfield"><span>{review.transcript
+            ? T('هذا اللي فهمناه من تسجيلك، تقدر تعدّله', 'This is what we heard; you can correct it')
+            : T('ما قدرنا نفرّغ التسجيل، اكتب وش قلت إذا تبي', 'We could not transcribe it; type what you said if you like')}</span>
+            <textarea rows={3} maxLength={1000} value={review.edit} onChange={e => setReview(r => ({ ...r, edit: e.target.value }))} /></label>}
+          {!d.zone && <>
+            {review.zoneGuessed && review.zone === review.zoneCode
+              ? <div className="vok"><Icon n="pin" s={20} /><span><b>{T('فهمنا إن المكان:', 'We think the place is:')}</b><small>{zName(review.zoneCode)}</small></span></div> : null}
+            <p className="vor">{review.zoneGuessed ? T('إذا المكان غلط اختر الصح', 'If that is wrong, pick the right zone') : T('ما عرفنا وين المكان، اختر المنطقة', 'We could not tell where it is; pick the zone')}</p>
+            <div className="vzones">{zones.map(z => (
+              <button key={z.code} className={'vzone' + (review.zone === z.code ? ' sel' : '')} onClick={() => { setReview(r => ({ ...r, zone: z.code, unknown: false })); setErr(''); }}>
+                <span className="mono">{z.code}</span>{lang === 'ar' ? ZONE_AR[z.code] || z.name : z.name}</button>))}
+              <button className={'vzone' + (review.unknown ? ' sel' : '')} onClick={() => { setReview(r => ({ ...r, zone: null, unknown: true })); setErr(''); }}>
+                <span className="mono">?</span>{T('ما أعرف', "I don't know")}</button></div>
+          </>}
+          {review.hasVoice && <button className="btn btn-ghost vbig" disabled={busy} onClick={reRecord}><Icon n="mic" s={18} />{T('سجّل مرة ثانية', 'Record again')}</button>}
+        </>}
+        {step === 3 && t && !review && <>
           <div className="vsum"><span className="vt-ic"><Icon n={t.i} s={20} /></span><span><b>{L(t.n)}</b><small>{zName(d.zone)}{d.spot ? ' · ' + d.spot : ''}</small></span>
             <button className="vlink" onClick={() => setStep(2)}>{T('عدّل', 'Edit')}</button></div>
           <label className="vfield"><span>{T('وش صار بالضبط؟', 'Describe it')}</span><textarea rows={3} value={d.desc || ''} onChange={e => setD(o => ({ ...o, desc: e.target.value }))}
@@ -132,9 +180,10 @@ export function Visitor() {
         </>}
         {err ? <p className="form-err">{err}</p> : null}
         {step > 1 && <button className={'btn btn-primary vbig' + (busy ? ' is-busy' : '')} disabled={busy} onClick={next}>{step === 3
-          ? (busy ? <><Spinner />{hasMedia(media) ? T('نحلل المرفقات...', 'Analyzing attachments...') : T('نرسل بلاغك...', 'Sending...')}</> : <><Icon n="arrow" s={18} flip />{T('أرسل البلاغ', 'Send report')}</>)
+          ? (busy ? <><Spinner />{hasMedia(media) && !review ? T('نحلل المرفقات...', 'Analyzing attachments...') : T('نرسل بلاغك...', 'Sending...')}</>
+            : <><Icon n="arrow" s={18} flip />{!review && (media.audio || !d.zone) ? T('التالي', 'Next') : T('أرسل البلاغ', 'Send report')}</>)
           : T('التالي', 'Next')}</button>}
-        {busy && hasMedia(media) && <p className="vwait">{T('لحظات بس... نسمع التسجيل ونشوف الصور، ممكن ياخذ لين 15 ثانية. لا تسكّر الصفحة.', 'Hang on... we are listening to the recording and checking the photos. This can take up to 15 seconds.')}</p>}
+        {busy && hasMedia(media) && !review && <p className="vwait">{T('لحظات بس... نسمع التسجيل ونشوف الصور، ممكن ياخذ لين 15 ثانية. لا تسكّر الصفحة.', 'Hang on... we are listening to the recording and checking the photos. This can take up to 15 seconds.')}</p>}
       </>
     );
   } else if (view === 'done') {
@@ -145,8 +194,8 @@ export function Visitor() {
           <p>{T('رقم البلاغ', 'Report number')} <b className="mono">{r.code}</b></p></section>
         {r.voice ? (
           <section className="vheard"><span className="vheard-ic"><Icon n="mic" s={18} /></span><div>
-            {r.heard ? <><b>{T('فهمنا من تسجيلك:', 'From your voice note we understood:')}</b><p>«{r.heard}»</p>
-              <small>{T('إذا فيه شي غلط، لا تشيل هم، الفريق يقدر يسمع تسجيلك بنفسه.', 'If something is off, no worries: the team can listen to your recording.')}</small></>
+            {r.heard ? <><b>{T('وصل بلاغك بهذا الكلام:', 'Your report was sent with:')}</b><p>«{r.heard}»</p>
+              <small>{T('والفريق يقدر يسمع تسجيلك بنفسه بعد.', 'The team can also listen to your recording.')}</small></>
               : <><b>{T('وصلنا تسجيلك', 'We got your voice note')}</b><small>{T('ما قدرنا نفرّغه كتابة، بس الفريق بيسمعه بنفسه.', 'We could not transcribe it, but the team will listen to it.')}</small></>}
           </div></section>) : null}
         <section className="vcard"><Steps r={r} /></section>
