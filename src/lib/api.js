@@ -6,15 +6,28 @@ let token = null;
 let onUnauthorized = () => {};
 export const setToken = t => { token = t; };
 export const setUnauthorizedHandler = fn => { onUnauthorized = fn; };
+// visitor page accounts: their own token, never mixed with the staff one ({ visitor: true } calls)
+let visitorToken = null;
+let onVisitorUnauthorized = () => {};
+export const setVisitorToken = t => { visitorToken = t; };
+export const setVisitorUnauthorizedHandler = fn => { onVisitorUnauthorized = fn; };
+const authHeader = (headers, { auth = true, visitor = false } = {}) => {
+  if (visitor) { if (visitorToken) headers.Authorization = 'Bearer ' + visitorToken; }
+  else if (auth && token) headers.Authorization = 'Bearer ' + token;
+};
+const unauthorized = (status, { auth = true, visitor = false } = {}) => {
+  if (status !== 401) return;
+  if (visitor) { if (visitorToken) onVisitorUnauthorized(); } else if (auth && token) onUnauthorized();
+};
 
 export class ApiError extends Error {
   constructor(message, status) { super(message); this.status = status; }
 }
 
-async function request(method, path, body, { auth = true } = {}) {
+async function request(method, path, body, opts = {}) {
   const headers = { Accept: 'application/json' };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
-  if (auth && token) headers.Authorization = 'Bearer ' + token;
+  authHeader(headers, opts);
   let res;
   try {
     res = await fetch(BASE + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -25,7 +38,7 @@ async function request(method, path, body, { auth = true } = {}) {
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch (e) { data = null; }
   if (!res.ok) {
-    if (res.status === 401 && auth && token) onUnauthorized();
+    unauthorized(res.status, opts);
     const msg = (data && (data.message || data.error)) || `HTTP ${res.status}`;
     throw new ApiError(msg, res.status);
   }
@@ -33,9 +46,9 @@ async function request(method, path, body, { auth = true } = {}) {
 }
 
 // multipart (photos / voice): no Content-Type header, the browser adds it with the boundary
-async function upload(path, form, { auth = true } = {}) {
+async function upload(path, form, opts = {}) {
   const headers = { Accept: 'application/json' };
-  if (auth && token) headers.Authorization = 'Bearer ' + token;
+  authHeader(headers, opts);
   let res;
   try {
     res = await fetch(BASE + path, { method: 'POST', headers, body: form });
@@ -46,7 +59,7 @@ async function upload(path, form, { auth = true } = {}) {
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch (e) { data = null; }
   if (!res.ok) {
-    if (res.status === 401 && auth && token) onUnauthorized();
+    unauthorized(res.status, opts);
     // Spring's own size error (MaxUploadSizeExceededException) comes back with "error", not "message"
     const msg = (data && (data.message || data.error)) || `HTTP ${res.status}`;
     throw new ApiError(msg, res.status);
@@ -166,9 +179,13 @@ export const api = {
 
   // visitors (public)
   publicZones: () => get('/zones', { auth: false }),
-  visitorReport: dto => post('/visitor-reports', dto, { auth: false }),
-  visitorReportMedia: (dto, photos, audio) => upload('/visitor-reports/media', toForm(dto, photos, audio), { auth: false }),
-  visitorPreview: (dto, photos, audio) => upload('/visitor-reports/preview', toForm(dto, photos, audio), { auth: false }),
-  visitorConfirm: dto => post('/visitor-reports/confirm', dto, { auth: false }),
+  visitorRegister: dto => post('/visitor-auth/register', dto, { auth: false }),
+  visitorLogin: (email, password) => post('/visitor-auth/login', { email, password }, { auth: false }),
+  // sending a report needs the signed-in visitor (visitor token)
+  visitorReport: dto => post('/visitor-reports', dto, { visitor: true }),
+  visitorReportMedia: (dto, photos, audio) => upload('/visitor-reports/media', toForm(dto, photos, audio), { visitor: true }),
+  visitorPreview: (dto, photos, audio) => upload('/visitor-reports/preview', toForm(dto, photos, audio), { visitor: true }),
+  visitorConfirm: dto => post('/visitor-reports/confirm', dto, { visitor: true }),
+  visitorMine: () => get('/visitor-reports/mine', { visitor: true }),
   trackReport: code => get(`/visitor-reports/${encodeURIComponent(code)}`, { auth: false }),
 };

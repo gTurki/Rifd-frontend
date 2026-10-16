@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useApp } from '../store/AppContext.jsx';
 import { Icon, Logo } from '../components/ui.jsx';
 import { LangSeg } from '../components/Shell.jsx';
 import { MediaPicker, Spinner, emptyMedia, hasMedia } from '../components/MediaPicker.jsx';
-import { api } from '../lib/api.js';
+import { api, setVisitorToken, setVisitorUnauthorizedHandler } from '../lib/api.js';
+import { VisitorAuth } from './VisitorAuth.jsx';
 import { hm } from '../lib/labels.js';
 import { ZONE_AR } from '../map/geometry.js';
 
@@ -27,9 +28,34 @@ const VIS_WAYS = [
   { k: 'staff', i: 'badge', n: ['أي موظف أو مكتب خدمة الزوار', 'Any staff member or help desk'], d: ['قول لأي موظف لابس زي إكسبو، ويرفع البلاغ من جواله على طول.', 'Tell anyone in Expo uniform; they log it on the spot.'] },
 ];
 const VSTEPS = [['استلمنا بلاغك', 'Report received'], ['وصل لأقرب فريق', 'Nearest team assigned'], ['الفريق شغّال عليه', 'Team is on it'], ['انحلّت المشكلة', 'Resolved']];
+// per account: the server has the list ("mine"), this keeps what only the page knows (type, what we heard)
 const STORE = 'rifd-visitor-reports';
-const loadReports = () => { try { const a = JSON.parse(localStorage.getItem(STORE) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
-const saveReports = list => { try { localStorage.setItem(STORE, JSON.stringify(list.slice(0, 20))); } catch (e) { /* */ } };
+const loadReports = key => { try { const a = JSON.parse(localStorage.getItem(key) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
+const saveReports = (key, list) => { try { localStorage.setItem(key, JSON.stringify(list.slice(0, 20))); } catch (e) { /* */ } };
+
+// the visitor's own sign-in, kept apart from the staff one (never opens the operations center)
+const VAUTH = 'rifd-visitor-auth';
+const loadVAuth = () => { try { return JSON.parse(sessionStorage.getItem(VAUTH) || localStorage.getItem(VAUTH) || 'null'); } catch (e) { return null; } };
+const saveVAuth = (a, remember) => {
+  try {
+    sessionStorage.removeItem(VAUTH); localStorage.removeItem(VAUTH);
+    if (a) (remember ? localStorage : sessionStorage).setItem(VAUTH, JSON.stringify(a));
+  } catch (e) { /* private mode */ }
+};
+
+// visitors sign in (or sign up) first; an expired / refused token signs them out
+export function Visitor() {
+  const [vauth, setVauth] = useState(() => { const a = loadVAuth(); setVisitorToken(a ? a.token : null); return a; });
+  const signOut = useCallback(() => { saveVAuth(null); setVisitorToken(null); setVauth(null); }, []);
+  useEffect(() => { setVisitorUnauthorizedHandler(signOut); return () => setVisitorUnauthorizedHandler(() => {}); }, [signOut]);
+  if (!vauth) {
+    return <VisitorAuth onDone={(r, remember) => {
+      const a = { token: r.token, visitorId: r.visitorId, name: r.name, email: r.email };
+      setVisitorToken(a.token); saveVAuth(a, remember); setVauth(a);
+    }} />;
+  }
+  return <VisitorApp key={vauth.visitorId} vauth={vauth} signOut={signOut} />;
+}
 
 function Steps({ r }) {
   const { L } = useApp();
@@ -42,8 +68,9 @@ function Steps({ r }) {
   );
 }
 
-export function Visitor() {
+function VisitorApp({ vauth, signOut }) {
   const { T, L, lang, setPage, theme, setTheme, fail } = useApp();
+  const storeKey = STORE + ':' + vauth.visitorId;
   const [view, setView] = useState('home');
   const [menu, setMenu] = useState(false);
   const [step, setStep] = useState(1);
@@ -51,7 +78,7 @@ export function Visitor() {
   const [err, setErr] = useState('');
   const [zones, setZones] = useState([]);
   const [routes, setRoutes] = useState([]);
-  const [reports, setReports] = useState(loadReports);
+  const [reports, setReports] = useState(() => loadReports(storeKey));
   const [last, setLast] = useState(null);
   const [busy, setBusy] = useState(false);
   const [media, setMedia] = useState(emptyMedia);
@@ -59,16 +86,19 @@ export function Visitor() {
   const [review, setReview] = useState(null);
 
   useEffect(() => { api.publicZones().then(setZones).catch(() => {}); api.routes().then(setRoutes).catch(() => {}); }, []);
-  // refresh the status of saved reports every few seconds
+  // my reports come from the server (any device); every few seconds for the live status
   useEffect(() => {
-    if (!reports.length) return undefined;
-    const tick = () => Promise.all(reports.map(r => api.trackReport(r.code).catch(() => null))).then(list => {
-      setReports(old => { const next = old.map((r, k) => (list[k] ? { ...r, ...list[k] } : r)); saveReports(next); return next; });
-    });
+    const tick = () => api.visitorMine().then(list => {
+      setReports(old => {
+        const mine = {}; old.forEach(r => { mine[r.code] = r; });
+        const next = (list || []).map(s => ({ ...(mine[s.trackingCode] || {}), ...s, code: s.trackingCode, heard: (mine[s.trackingCode] || {}).heard || null }));
+        saveReports(storeKey, next); return next;
+      });
+    }).catch(() => {});
     tick();
     const h = setInterval(tick, 5000);
     return () => clearInterval(h);
-  }, [reports.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [storeKey]);
 
   const go = v => { setView(v); setMenu(false); setErr(''); window.scrollTo(0, 0); };
   const start = (type, qr) => {
@@ -81,7 +111,7 @@ export function Visitor() {
   const saved = (r, zone, heard) => {
     // heard = what we understood from the voice note, kept so "My reports" can show it too
     const item = { ...r, code: r.trackingCode, type: d.type, zone: r.zoneCode || zone || null, at: new Date().toISOString(), voice: !!media.audio, heard: heard || null };
-    const list = [item, ...reports]; setReports(list); saveReports(list);
+    const list = [item, ...reports.filter(o => o.code !== item.code)]; setReports(list); saveReports(storeKey, list);
     setLast(item.code); setD({}); setMedia(emptyMedia()); setReview(null); setStep(1); go('done');
   };
   const next = async () => {
@@ -263,7 +293,8 @@ export function Visitor() {
           <div className="vm-row"><span>{T('المظهر', 'Appearance')}</span><div className="theme-sw">
             <button className={theme === 'dark' ? 'on' : ''} onClick={() => setTheme('dark')}><Icon n="moon" s={15} /></button>
             <button className={theme === 'light' ? 'on' : ''} onClick={() => setTheme('light')}><Icon n="sun" s={15} /></button></div></div>
-          <button className="vm-i vm-out" onClick={() => setPage('welcome')}><Icon n="logout" s={20} /><span>{T('صفحة البداية', 'Start page')}</span></button>
+          <button className="vm-i" onClick={() => setPage('welcome')}><Icon n="home" s={20} /><span>{T('صفحة البداية', 'Start page')}</span></button>
+          <button className="vm-i vm-out" onClick={() => { setMenu(false); signOut(); }}><Icon n="logout" s={20} /><span>{T('تسجيل خروج', 'Sign out')}<small className="muted" style={{ display: 'block' }} dir="ltr">{vauth.email}</small></span></button>
         </aside>
       </>}
     </div>
