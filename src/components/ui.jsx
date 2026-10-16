@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { I, LOGO } from '../lib/svg.js';
+import { I } from '../lib/svg.js';
+import logoSrc from '../assets/logo.webp?inline';
 import { useApp } from '../store/AppContext.jsx';
 import { SEV, ZST, STATUS, SRC, initials } from '../lib/labels.js';
 
@@ -12,10 +13,9 @@ export function Icon({ n, s = 18, flip, style, className }) {
   );
 }
 
-// the woven logo is an SVG string (unique gradient ids per copy); display:contents keeps the design's layout
+// Saudi-identity logo (Sadu pattern), inlined into the bundle so it shows instantly
 export function Logo({ s = 38 }) {
-  const html = useMemo(() => LOGO(s), [s]);
-  return <span style={{ display: 'contents' }} dangerouslySetInnerHTML={{ __html: html }} />;
+  return <img className="logo" src={logoSrc} width={s} height={s} alt="" draggable="false" />;
 }
 
 export function Pill({ sev }) {

@@ -569,7 +569,7 @@ p{margin:0}
 .field input{height:46px;padding:0 14px;border-radius:12px;background:rgba(0,0,0,.25);border:1px solid var(--line-2);outline:none;transition:border-color .2s}
 .field input:focus{border-color:var(--brand)}
 .l-logo{display:flex;justify-content:center;margin-bottom:-4px}
-.l-logo svg{animation:spinIn 1.2s cubic-bezier(.2,.8,.2,1);filter:drop-shadow(0 0 22px rgba(64,184,156,.28))}
+.l-logo .logo{animation:spinIn 1.2s cubic-bezier(.2,.8,.2,1);filter:drop-shadow(0 0 22px rgba(64,184,156,.28))}
 .brand .logo{filter:drop-shadow(0 0 8px rgba(64,184,156,.25))}
 @keyframes spinIn{from{transform:rotate(-120deg) scale(.7);opacity:0}to{transform:none;opacity:1}}
 .lcard .brand b{line-height:1.35}
