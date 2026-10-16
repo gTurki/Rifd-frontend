@@ -8,6 +8,9 @@ import { VisitorAuth } from './VisitorAuth.jsx';
 import { hm } from '../lib/labels.js';
 import { ZONE_AR } from '../map/geometry.js';
 
+// the Rifd Telegram bot (alert source #5): opens the chat in the Telegram app or web
+const TELEGRAM_BOT_URL = 'https://t.me/RifdExpoBot';
+
 // the type is written into the report text (Arabic): it helps the classifier pick the right team
 const VIS_TYPES = {
   escal: { n: ['سلم كهربائي متوقف', 'Escalator stopped'], i: 'escal' },
@@ -23,7 +26,7 @@ const VIS_TYPES = {
 const VIS_WAYS = [
   { k: 'app', i: 'phone', n: ['من هنا أو من تطبيق إكسبو', 'Here or in the Expo app'], d: ['اختر المشكلة ومكانك، وبلاغك يوصل خلال ثواني.', 'Pick the problem and your spot; it arrives in seconds.'], btn: ['ابدأ البلاغ', 'Start a report'], a: 'start' },
   { k: 'qr', i: 'qr', n: ['امسح رمز QR', 'Scan a QR code'], d: ['تلقاه على كل جناح ومصعد وبوابة، ويعرف مكانك على طول.', 'On every pavilion, lift and gate — it fills in your location.'], btn: ['جرّب المسح', 'Try a scan'], a: 'qr' },
-  { k: 'tg', i: 'chat', n: ['بوت تيليجرام', 'Telegram bot'], d: ['ارسل كتابة أو تسجيل صوتي أو صورة، وتوصل لنفس غرفة العمليات.', 'Send text, a voice note or a photo; it reaches the same operations center.'] },
+  { k: 'tg', i: 'chat', n: ['بوت تيليجرام', 'Telegram bot'], d: ['ارسل كتابة أو تسجيل صوتي أو صورة، وتوصل لنفس غرفة العمليات.', 'Send text, a voice note or a photo; it reaches the same operations center.'], btn: ['افتح البوت', 'Open the bot'], href: TELEGRAM_BOT_URL },
   { k: 'call', i: 'phone', n: ['الرقم الموحد 2036', 'Unified number 2036'], d: ['شغّال ٢٤ ساعة وبأكثر من لغة.', 'Open 24/7 in several languages.'] },
   { k: 'staff', i: 'badge', n: ['أي موظف أو مكتب خدمة الزوار', 'Any staff member or help desk'], d: ['قول لأي موظف لابس زي إكسبو، ويرفع البلاغ من جواله على طول.', 'Tell anyone in Expo uniform; they log it on the spot.'] },
 ];
@@ -157,7 +160,8 @@ function VisitorApp({ vauth, signOut }) {
 
   const wayCard = (w, full) => (
     <article className="vway" key={w.k}><span className="vway-ic"><Icon n={w.i} s={22} /></span><div className="vway-b"><b>{L(w.n)}</b>{full ? <p>{L(w.d)}</p> : null}</div>
-      {w.btn ? <button className="btn btn-ghost btn-sm" onClick={() => start(null, w.a === 'qr')}>{L(w.btn)}</button> : null}</article>);
+      {w.href ? <a className="btn btn-ghost btn-sm" href={w.href} target="_blank" rel="noopener noreferrer">{L(w.btn)}</a>
+        : w.btn ? <button className="btn btn-ghost btn-sm" onClick={() => start(null, w.a === 'qr')}>{L(w.btn)}</button> : null}</article>);
   const sos = <a className="vsos" href="tel:911"><Icon n="phone" s={20} /><span><b>{T('فيه خطر على حياة أحد؟', 'Life-threatening emergency?')}</b><small>{T('اتصل على 911 على طول', 'Call 911 right away')}</small></span><span className="vsos-n mono">911</span></a>;
   const published = routes.filter(r => r.status === 'DISRUPTED' && r.publishedAt);
 
