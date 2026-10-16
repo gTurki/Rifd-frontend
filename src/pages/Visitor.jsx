@@ -158,6 +158,17 @@ function VisitorApp({ vauth, signOut }) {
   };
   const reRecord = () => { setReview(null); setMedia(m => ({ ...m, audio: null })); setErr(''); };
 
+  // the team on the report (number only): assigned / on it / still looking. Nothing once it is closed
+  const teamCard = r => {
+    if (!r || r.step === 3) return null;
+    if ((r.step === 1 || r.step === 2) && r.teamSize > 0) {
+      return <div className="vok"><Icon n="users" s={20} /><span><b>{r.step === 2 ? T('الفريق شغّال على بلاغك', 'The team is working on your report') : T('تم إسناد فريق لبلاغك', 'A team has been assigned to your report')}</b>
+        <small>{T(`${r.teamSize} ${r.teamSize === 1 ? 'موظف' : 'موظفين'} من أقرب فريق`, `${r.teamSize} staff from the nearest team`)}</small></span></div>;
+    }
+    return <div className="vok"><Spinner s={18} /><span><b>{T('نبحث عن أقرب فريق لبلاغك…', 'Finding the nearest team for your report…')}</b>
+      <small>{T('تتحدث هذي الصفحة تلقائي', 'This page updates by itself')}</small></span></div>;
+  };
+
   const wayCard = (w, full) => (
     <article className="vway" key={w.k}><span className="vway-ic"><Icon n={w.i} s={22} /></span><div className="vway-b"><b>{L(w.n)}</b>{full ? <p>{L(w.d)}</p> : null}</div>
       {w.href ? <a className="btn btn-ghost btn-sm" href={w.href} target="_blank" rel="noopener noreferrer">{L(w.btn)}</a>
@@ -228,6 +239,7 @@ function VisitorApp({ vauth, signOut }) {
       <>
         <section className="vdone"><div className="vdone-ic"><Icon n="check" s={34} /></div><h1>{T('وصل بلاغك', 'Report sent')}</h1>
           <p>{T('رقم البلاغ', 'Report number')} <b className="mono">{r.code}</b></p></section>
+        {teamCard(r)}
         {r.voice ? (
           <section className="vheard"><span className="vheard-ic"><Icon n="mic" s={18} /></span><div>
             {r.heard ? <><b>{T('وصل بلاغك بهذا الكلام:', 'Your report was sent with:')}</b><p>«{r.heard}»</p>
@@ -246,7 +258,7 @@ function VisitorApp({ vauth, signOut }) {
           <section className="vcard" key={r.code}><div className="vsum flat"><span className="vt-ic"><Icon n={(VIS_TYPES[r.type] || VIS_TYPES.other).i} s={20} /></span>
             <span><b>{L((VIS_TYPES[r.type] || VIS_TYPES.other).n)}</b><small><span className="mono">{r.code}</span> · {zName(r.zone)}</small></span>
             <span className={'vpill' + (r.step === 3 ? ' ok' : '')}>{L(VSTEPS[r.step || 0])}</span></div>
-            {r.heard ? <p className="vheard-s"><Icon n="mic" s={14} />«{r.heard}»</p> : null}<Steps r={r} /></section>))
+            {r.heard ? <p className="vheard-s"><Icon n="mic" s={14} />«{r.heard}»</p> : null}{teamCard(r)}<Steps r={r} /></section>))
           : <><section className="vcard vempty"><Icon n="list" s={44} /><b>{T('ما عندك بلاغات للحين', 'No reports yet')}</b></section>
             <button className="btn btn-primary vbig" onClick={() => start()}>{T('بلّغ عن مشكلة', 'Report a problem')}</button></>}
       </>);
