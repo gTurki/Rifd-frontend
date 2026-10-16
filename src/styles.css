@@ -706,8 +706,8 @@ button.kpi:hover,button.kpi:focus-visible{background:var(--surface-2)}
 .vflow span{padding:6px 12px;border-radius:99px;background:var(--surface);color:var(--fg)}
 .vm-scrim{position:fixed;inset:0;z-index:40;background:rgba(1,10,8,.6);animation:fade .2s ease}
 [data-theme="light"] .vm-scrim{background:rgba(10,35,28,.3)}
-.vm{position:fixed;top:0;bottom:0;inset-inline-start:0;z-index:41;width:min(320px,86vw);padding:18px 14px;background:var(--bg-2);border-inline-end:1px solid var(--line-2);display:flex;flex-direction:column;gap:4px;animation:vmInR .25s ease}
-[dir=rtl] .vm{animation-name:vmIn}
+.vm{position:fixed;top:0;bottom:0;inset-inline-end:0;z-index:41;width:min(320px,86vw);padding:18px 14px;background:var(--bg-2);border-inline-start:1px solid var(--line-2);display:flex;flex-direction:column;gap:4px;animation:vmIn .25s ease}
+[dir=rtl] .vm{animation-name:vmInR}
 @keyframes vmIn{from{transform:translateX(100%)}to{transform:none}}
 @keyframes vmInR{from{transform:translateX(-100%)}to{transform:none}}
 .vm-h{display:flex;align-items:center;justify-content:space-between;padding:4px 8px 14px}
