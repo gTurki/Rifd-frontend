@@ -40,8 +40,9 @@ export function StaffAdmin() {
   const del = async s => {
     if (pending !== s.id) { setPending(s.id); return; }
     setPending(null);
+    // run() gives undefined only on failure (an empty 204 body is null)
     const r = await run(() => api.deleteStaff(s.id), T('حُذف الحساب', 'Account deleted'));
-    if (r) refreshStaff();
+    if (r !== undefined) refreshStaff();
   };
   const list = data.staff.slice().sort((a, b) => b.id - a.id);
   return (
@@ -190,7 +191,7 @@ function Bars({ labels, values, top }) {
 export function Analytics() {
   const { data, vm, T, L } = useApp();
   const s = data.stats || {};
-  const noise = s.totalAlerts ? Math.round((1 - (s.totalIncidents || 0) / s.totalAlerts) * 100) : 0;
+  const noise = s.totalAlerts ? Math.max(0, Math.round((1 - (s.totalIncidents || 0) / s.totalAlerts) * 100)) : 0;
   const closed = vm.incidents.filter(i => !i.active).length;
   // average minutes from assignment to arrival on site
   const arrivals = data.tasks.filter(t => t.assignedAt && t.arrivedAt).map(t => (new Date(t.arrivedAt) - new Date(t.assignedAt)) / 60000);
@@ -353,7 +354,7 @@ export function Profile() {
         <form className="set-r" style={{ flexWrap: 'wrap', gap: 10 }} onSubmit={async e => {
           e.preventDefault();
           const r = await run(() => api.changePassword(pw.cur, pw.next), T('تم تغيير كلمة المرور', 'Password changed'));
-          if (r) setPw({ cur: '', next: '' });
+          if (r !== undefined) setPw({ cur: '', next: '' });
         }}>
           <b>{T('تغيير كلمة المرور', 'Change password')}</b>
           <input className="prof-in" type="password" dir="ltr" placeholder={T('الحالية', 'Current')} value={pw.cur} onChange={e => setPw(o => ({ ...o, cur: e.target.value }))} />

@@ -144,7 +144,7 @@ function Actions({ i }) {
   const [notes, setNotes] = useState('');
   const [actual, setActual] = useState('');
   const id = i.raw.id;
-  const done = () => { setMode(null); setNotes(''); refreshIncident(id); };
+  const done = () => { setMode(null); setNotes(''); setActual(''); refreshIncident(id); };
   if (!i.active) {
     return (
       <section className="panel"><div className="panel-h"><h2>{T('إجراءات', 'Actions')}</h2></div><div className="panel-b">

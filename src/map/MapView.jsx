@@ -1,6 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../store/AppContext.jsx';
-import { M, getMap3D } from './Map3D.js';
 import { Icon, Pill, ZPill, StChip, Who } from '../components/ui.jsx';
 import { ZCSS } from './geometry.js';
 import { SRC } from '../lib/labels.js';
@@ -86,13 +85,35 @@ function MapCard() {
   return null;
 }
 
+// three.js is big: loaded only when a map is first shown (the visitor / login pages never download it)
+let map3d = null, map3dLoad = null;
+const loadMap3D = () => (map3dLoad = map3dLoad || import('./Map3D.js').then(m => { map3d = m; return m; }));
+
 // mode: overview | full | access (same layer presets as the design)
 export function MapView({ mode = 'overview', className = '' }) {
   const app = useApp();
   const { vm, sel, lang, layers, flash, loaded, mapFull, setMapFull, toggleSel, T, data } = app;
   const slot = useRef(null);
+  const [, setMod] = useState(map3d);
+  const [loadFailed, setLoadFailed] = useState(false);
+  useEffect(() => {
+    if (map3d) return undefined;
+    let alive = true;
+    loadMap3D().then(m => { if (alive) setMod(m); }).catch(() => { map3dLoad = null; if (alive) setLoadFailed(true); });
+    return () => { alive = false; };
+  }, []);
+
+  const ready = loaded && data.zones.length > 0;
+  useEffect(() => {
+    if (!ready || !map3d || !slot.current) return;
+    const map = map3d.getMap3D();
+    if (map) map.attach(slot.current, mode);
+  });
+
+  if (!ready || (!map3d && !loadFailed)) return <div className={'map-wrap ' + className}><div className="m3d-fail">{T('جاري تحميل الخريطة…', 'Loading the map…')}</div></div>;
 
   // fill the map state from the backend view models
+  const M = map3d ? map3d.M : {};
   M.lang = lang;
   M.incidents = vm.incidents;
   M.staff = vm.staff;
@@ -110,15 +131,7 @@ export function MapView({ mode = 'overview', className = '' }) {
   M.routeStatus = Object.fromEntries(data.routes.map(r => [String(r.id), vm.routeState(r)]));
   M.altPaths = Object.fromEntries(data.routes.map(r => [String(r.id), vm.altPath(r)]).filter(([, p]) => p));
 
-  const ready = loaded && data.zones.length > 0;
-  useEffect(() => {
-    if (!ready || !slot.current) return;
-    const map = getMap3D();
-    if (map) map.attach(slot.current, mode);
-  });
-
-  if (!ready) return <div className={'map-wrap ' + className}><div className="m3d-fail">{T('جاري تحميل الخريطة…', 'Loading the map…')}</div></div>;
-  const map = getMap3D();
+  const map = map3d ? map3d.getMap3D() : null;
   return (
     <div className={'map-wrap ' + className + (mapFull ? ' is-full' : '')}>
       {map ? <div ref={slot} className={'m3d-slot' + (mode === 'full' ? ' full' : mode === 'access' ? ' acc' : '')} data-mode={mode} />

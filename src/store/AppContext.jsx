@@ -104,6 +104,8 @@ export function AppProvider({ children }) {
   const toggleSel = (k, v) => setSel(s => (s && s.k === k && s.v === String(v) ? null : { k, v: String(v) }));
 
   // ---------------- loading ----------------
+  // signed out / switched user while a load was running -> its result is dropped
+  const authRef = useRef(auth); authRef.current = auth;
   const loadAll = useCallback(async () => {
     if (!auth) return;
     const safe = p => p.catch(() => null);
@@ -112,6 +114,7 @@ export function AppProvider({ children }) {
         safe(api.zones()), safe(api.tasks({ staffId: auth.staffId })), safe(api.staffById(auth.staffId)),
         safe(api.notifications({ staffId: auth.staffId })), safe(api.routes()),
       ]);
+      if (authRef.current !== auth) return;
       setData(d => ({ ...d, zones: zones || [], tasks: tasks || [], staff: mine ? [mine] : [], notifications: notifications || [], routes: routes || [] }));
     } else {
       const [zones, incidents, alerts, staff, tasks, routes, assets, notifications, activity, stats, events, sim] = await Promise.all([
@@ -122,6 +125,7 @@ export function AppProvider({ children }) {
       const open = (incidents || []).filter(i => i.status !== 'RESOLVED' && i.status !== 'FALSE_ALARM');
       const recLists = await Promise.all(open.map(i => safe(api.incidentRecs(i.id))));
       const recs = {}; open.forEach((i, k) => { recs[i.id] = recLists[k] || []; });
+      if (authRef.current !== auth) return;
       setData(d => ({
         ...d, zones: zones || [], incidents: incidents || [], alerts: alerts || [], staff: staff || [], tasks: tasks || [],
         routes: routes || [], assets: assets || [], notifications: notifications || [], activity: activity || [],

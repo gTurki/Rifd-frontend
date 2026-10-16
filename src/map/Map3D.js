@@ -16,6 +16,8 @@ export const M = {
 };
 const L = a => Array.isArray(a) ? (M.lang === 'ar' ? a[0] : a[1]) : a;
 const x = (a, e) => M.lang === 'ar' ? a : e;
+// backend text (titles, names) goes into the overlay HTML: escape it
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 let instance;
 let failed = false;
@@ -343,7 +345,7 @@ function create() {
     if (s.k === 'inc') { const i = M.getInc(s.v); return i && W3(i.x, i.y); }
     if (s.k === 'zone') return s.v === 'A' ? [0, 0] : W3(...ZLBL[s.v]);
     if (s.k === 'staff') { const p = spos[s.v]; return p && [p.x, p.z]; }
-    if (s.k === 'asset') { const a = M.assetDefs[s.v]; return W3(a.x, a.y); }
+    if (s.k === 'asset') { const a = M.assetDefs[s.v]; return a && W3(a.x, a.y); }
   };
   function update(m) {
     mode = m;
@@ -362,19 +364,19 @@ function create() {
     const sel = M.sel || {};
     let h = '';
     LANDMARKS.forEach(l => h += `<div class="mk" data-p="${l.p[0]},${l.p[1]},${l.h || 4}" data-b="0"><span class="mi mk-lm">${L(l.n)}</span></div>`);
-    ZK.forEach(z => { const [x, y] = z === 'A' ? [CX, CY + 78] : ZLBL[z]; h += `<div class="mk" data-p="${x - CX},${y - CY},2" data-b="100"><span class="mi mk-z"><i style="border-color:${ZCSS(z)};color:${ZCSS(z)}">${M.zoneCodes[z] || z}</i>${L(M.zoneNames[z] || ['', ''])}</span></div>`; });
+    ZK.forEach(z => { const [x, y] = z === 'A' ? [CX, CY + 78] : ZLBL[z]; h += `<div class="mk" data-p="${x - CX},${y - CY},2" data-b="100"><span class="mi mk-z"><i style="border-color:${ZCSS(z)};color:${ZCSS(z)}">${esc(M.zoneCodes[z] || z)}</i>${esc(L(M.zoneNames[z] || ['', '']))}</span></div>`; });
     if (lay.gates) GATES.forEach(g => { const [x, y] = pol(g.a, 315); h += `<div class="mk" data-p="${x - CX},${y - CY},19" data-b="100"><span class="mi mk-gate">${g.id}</span></div>`; });
     if (lay.assets) Object.entries(M.assetDefs).forEach(([id, a]) => {
-      h += `<button class="mk" data-p="${a.x - CX},${a.y - CY},4" data-b="1000" data-a="sel" data-v="asset|${id}" aria-label="${id}"><span class="mi mk-as ${M.assetStatus[id] !== 'ok' ? 'bad' : ''} ${sel.k === 'asset' && sel.v === id ? 'sel' : ''}">${ic(a.t === 'elev' ? 'elev' : 'access', 12)}${a.n}</span></button>`;
+      h += `<button class="mk" data-p="${a.x - CX},${a.y - CY},4" data-b="1000" data-a="sel" data-v="asset|${esc(id)}" aria-label="${esc(id)}"><span class="mi mk-as ${M.assetStatus[id] !== 'ok' ? 'bad' : ''} ${sel.k === 'asset' && sel.v === id ? 'sel' : ''}">${ic(a.t === 'elev' ? 'elev' : 'access', 12)}${esc(a.n)}</span></button>`;
     });
     if (lay.staff) M.staff.filter(s => s.status !== 'off').forEach(s => {
       if (!spos[s.id]) spos[s.id] = new THREE.Vector3(s.x - CX, 3, s.y - CY);
-      h += `<button class="mk" data-s="${s.id}" data-b="2000" data-a="sel" data-v="staff|${s.id}" aria-label="${L(s.n)} · ${L(s.roleL)}"><span class="mi mk-st ${s.status === 'available' ? 'av' : 'busy'} ${sel.k === 'staff' && sel.v === s.id ? 'sel' : ''}" dir="${M.lang === 'ar' ? 'rtl' : 'ltr'}"><i></i><span>${L(s.roleS)}</span><span class="nm">· ${L(s.n)}</span></span></button>`;
+      h += `<button class="mk" data-s="${esc(s.id)}" data-b="2000" data-a="sel" data-v="staff|${esc(s.id)}" aria-label="${esc(L(s.n))} · ${esc(L(s.roleL))}"><span class="mi mk-st ${s.status === 'available' ? 'av' : 'busy'} ${sel.k === 'staff' && sel.v === s.id ? 'sel' : ''}" dir="${M.lang === 'ar' ? 'rtl' : 'ltr'}"><i></i><span>${esc(L(s.roleS))}</span><span class="nm">· ${esc(L(s.n))}</span></span></button>`;
     });
     if (lay.incidents) M.incidents.filter(i => i.active).forEach(i => {
       const c = i.inProg ? 'var(--med)' : sevColor(i.sev), n = i.total;
       const hot = i.status === 'open' && (i.sev === 'crit' || i.sev === 'high');
-      h += `<button class="mk mk-inc ${hot ? 'hot' : ''} ${sel.k === 'inc' && sel.v === i.id ? 'sel' : ''} ${M.flash === i.id ? 'new' : ''}" style="--c:${c}" data-p="${i.x - CX},${i.y - CY},0" data-b="${4000 - rank[i.sev] * 10}" data-a="sel" data-v="inc|${i.id}" aria-label="${i.id} · ${L(i.title)}"><span class="pin"><b>${n > 1 ? n : '!'}</b></span></button>`;
+      h += `<button class="mk mk-inc ${hot ? 'hot' : ''} ${sel.k === 'inc' && sel.v === i.id ? 'sel' : ''} ${M.flash === i.id ? 'new' : ''}" style="--c:${c}" data-p="${i.x - CX},${i.y - CY},0" data-b="${4000 - rank[i.sev] * 10}" data-a="sel" data-v="inc|${esc(i.id)}" aria-label="${esc(i.id)} · ${esc(L(i.title))}"><span class="pin"><b>${n > 1 ? n : '!'}</b></span></button>`;
     });
     ov.innerHTML = h;
     items = [...ov.children].map(e => {
