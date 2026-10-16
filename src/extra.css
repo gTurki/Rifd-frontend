@@ -27,3 +27,16 @@
 .media-audio audio{flex:1;min-width:0;height:36px}
 .media-hint{color:var(--faint);font-size:12px}
 .emp-form .media{max-width:none}
+/* busy state: a spinner + a short "still working" line, so the page never looks frozen */
+.spinner{display:inline-block;flex:none;border-radius:50%;border:2px solid currentColor;border-top-color:transparent;animation:spin .8s linear infinite;vertical-align:middle}
+.btn.is-busy[disabled]{opacity:.9;cursor:progress;gap:10px}
+.vwait{color:var(--muted);font-size:13px;margin-top:-10px}
+.form-actions .vwait{margin:0;align-self:center}
+/* "what we heard" from the voice note */
+.vheard{display:flex;gap:12px;align-items:flex-start;padding:16px;border-radius:16px;background:var(--brand-soft);border:1px solid rgba(64,184,156,.35)}
+.vheard-ic{width:36px;height:36px;flex:none;border-radius:50%;display:grid;place-items:center;background:var(--brand);color:var(--brand-ink)}
+.vheard b{display:block;font-weight:500;margin-bottom:4px}
+.vheard p{font-size:15px;line-height:1.7;color:var(--fg)}
+.vheard small{display:block;color:var(--muted);font-size:12px;margin-top:6px}
+.vheard-s{display:flex;gap:6px;align-items:flex-start;color:var(--fg-2);font-size:13px;margin:10px 0 0}
+.vheard-s .ic{flex:none;margin-top:3px;color:var(--brand)}

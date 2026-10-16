@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useApp } from '../store/AppContext.jsx';
 import { Icon, Pill, Dropdown, ReasonForm } from '../components/ui.jsx';
 import { api } from '../lib/api.js';
-import { MediaPicker, emptyMedia, hasMedia } from '../components/MediaPicker.jsx';
+import { MediaPicker, Spinner, emptyMedia, hasMedia, heardFrom } from '../components/MediaPicker.jsx';
 import { SEV_KEY, STATUS, STEPS, TASK_KEY, TASK_ST, NEXT_TASK, ACTIVE_TASK, REPORT_TYPES, hm } from '../lib/labels.js';
 import { ZONE_AR } from '../map/geometry.js';
 
@@ -82,10 +82,14 @@ export function Report() {
     const sourceReference = 'staff:' + (self ? self.employeeNumber : me);
     const files = { photos: media.photos.length, audio: !!media.audio };
     try {
-      if (hasMedia(media)) await api.sendAlertMedia({ sourceReference, text, language: 'ar', zoneCode: d.zone }, media.photos, media.audio && media.audio.blob);
-      else await api.sendAlert({ source: 'STAFF_APP', sourceReference, text, language: 'ar', zoneCode: d.zone });
-      setSent(s => [{ ...d, files, at: new Date() }, ...s]); setD({}); setMedia(emptyMedia());
-      toast('ok', T('تم إرسال البلاغ', 'Report sent'), T('وصل بلاغك إلى مركز العمليات.', 'Your report reached the operations center.'));
+      const r = hasMedia(media)
+        ? await api.sendAlertMedia({ sourceReference, text, language: 'ar', zoneCode: d.zone }, media.photos, media.audio && media.audio.blob)
+        : await api.sendAlert({ source: 'STAFF_APP', sourceReference, text, language: 'ar', zoneCode: d.zone });
+      const heard = media.audio ? heardFrom(r && r.rawText) : null;
+      setSent(s => [{ ...d, files, heard, at: new Date() }, ...s]); setD({}); setMedia(emptyMedia());
+      toast('ok', T('وصل بلاغك', 'Report sent'), heard ? T(`فهمنا من تسجيلك: «${heard}»`, `From your voice note: "${heard}"`)
+        : media.audio ? T('وصل التسجيل، بس ما قدرنا نفرّغه. غرفة العمليات بتسمعه.', 'Voice note received; the operations room will listen to it.')
+          : T('وصل لغرفة العمليات.', 'Your report reached the operations center.'));
     } catch (ex) { fail(ex); }
     setBusy(false);
   };
@@ -93,23 +97,26 @@ export function Report() {
   return (
     <>
       <div className="ph"><div><h1>{T('رفع بلاغ', 'Report an issue')}</h1></div></div>
-      <section className="panel"><div className="panel-h"><h2>{T('بلاغ جديد لمركز العمليات', 'New report to the operations center')}</h2></div>
+      <section className="panel"><div className="panel-h"><h2>{T('بلاغ جديد لغرفة العمليات', 'New report to the operations center')}</h2></div>
         <form className="panel-b emp-form" autoComplete="off" noValidate onSubmit={submit}>
           <div className="form-grid">
-            {f('type', T('نوع البلاغ', 'Type'), <Dropdown id="rf-type" value={d.type} onChange={v => set('type', v)} placeholder={T('اختر نوع البلاغ', 'Choose type')} options={Object.entries(REPORT_TYPES).map(([k, n]) => [k, L(n)])} />, true)}
+            {f('type', T('نوع البلاغ', 'Type'), <Dropdown id="rf-type" value={d.type} onChange={v => set('type', v)} placeholder={T('اختر نوعه', 'Choose type')} options={Object.entries(REPORT_TYPES).map(([k, n]) => [k, L(n)])} />, true)}
             {f('zone', T('المنطقة', 'Zone'), <Dropdown id="rf-zone" value={d.zone} onChange={v => set('zone', v)} placeholder={T('اختر المنطقة', 'Choose zone')} options={zones} />, true)}
-            {f('spot', T('الموقع بالتحديد', 'Exact spot'), <input id="rf-spot" value={d.spot || ''} onChange={e => set('spot', e.target.value)} placeholder={T('الجناح B — المدخل الشرقي', 'Pavilion B — east entrance')} />)}
-            {f('desc', T('وصف البلاغ', 'Description'), <textarea id="rf-desc" rows={4} value={d.desc || ''} onChange={e => set('desc', e.target.value)} />, !hasMedia(media), true)}
+            {f('spot', T('وين بالضبط', 'Exact spot'), <input id="rf-spot" value={d.spot || ''} onChange={e => set('spot', e.target.value)} placeholder={T('الجناح B — المدخل الشرقي', 'Pavilion B — east entrance')} />)}
+            {f('desc', T('وش صار', 'Description'), <textarea id="rf-desc" rows={4} value={d.desc || ''} onChange={e => set('desc', e.target.value)} />, !hasMedia(media), true)}
             <div className="field wide"><label>{T('صور أو تسجيل صوتي', 'Photos or a voice note')}</label>
               <MediaPicker value={media} onChange={m => { setMedia(m); setErr(e => e.filter(x => x !== 'desc')); }} disabled={busy} /></div>
           </div>
-          {err.length ? <p className="form-err">{T('أكمل الحقول المطلوبة', 'Complete the required fields')}</p> : null}
-          <div className="form-actions"><button type="submit" className="btn btn-primary" disabled={busy}>{busy && hasMedia(media) ? T('جاري تحليل المرفقات...', 'Analyzing attachments...') : <><Icon n="arrow" s={17} flip />{T('إرسال البلاغ', 'Send report')}</>}</button></div>
+          {err.length ? <p className="form-err">{T('كمّل الخانات المطلوبة', 'Complete the required fields')}</p> : null}
+          <div className="form-actions"><button type="submit" className={'btn btn-primary' + (busy ? ' is-busy' : '')} disabled={busy}>{busy
+            ? <><Spinner s={16} />{hasMedia(media) ? T('نحلل المرفقات...', 'Analyzing attachments...') : T('نرسل البلاغ...', 'Sending...')}</>
+            : <><Icon n="arrow" s={17} flip />{T('أرسل البلاغ', 'Send report')}</>}</button>
+            {busy && hasMedia(media) ? <span className="vwait">{T('ممكن ياخذ لين 15 ثانية، لا تسكّر الصفحة.', 'This can take up to 15 seconds.')}</span> : null}</div>
         </form></section>
-      {sent.length ? <section className="panel"><div className="panel-h"><h2>{T('بلاغاتي المرسلة', 'My reports')}</h2></div><div className="q">
+      {sent.length ? <section className="panel"><div className="panel-h"><h2>{T('بلاغاتي اللي أرسلتها', 'My reports')}</h2></div><div className="q">
         {sent.map((r, k) => <div className="q-item" key={k} style={{ cursor: 'default' }}><span className="sev-bar" style={{ background: 'var(--info)' }} />
-          <span><b>{r.desc || T('بلاغ بمرفقات', 'Report with attachments')}</b><small>{L(REPORT_TYPES[r.type])}{r.files && (r.files.photos || r.files.audio) ? ` · ${r.files.photos ? T(`${r.files.photos} صور`, `${r.files.photos} photos`) : ''}${r.files.photos && r.files.audio ? ' + ' : ''}${r.files.audio ? T('صوت', 'voice') : ''}` : ''} · {r.zone}{r.spot ? ' · ' + r.spot : ''} · {hm(r.at)}</small></span>
-          <span className="st done"><i />{T('تم الاستلام', 'Received')}</span></div>)}
+          <span><b>{r.desc || (r.heard ? `«${r.heard}»` : T('بلاغ بمرفقات', 'Report with attachments'))}</b><small>{L(REPORT_TYPES[r.type])}{r.files && (r.files.photos || r.files.audio) ? ` · ${r.files.photos ? T(`${r.files.photos} صور`, `${r.files.photos} photos`) : ''}${r.files.photos && r.files.audio ? ' + ' : ''}${r.files.audio ? T('صوت', 'voice') : ''}` : ''} · {r.zone}{r.spot ? ' · ' + r.spot : ''} · {hm(r.at)}</small></span>
+          <span className="st done"><i />{T('وصل', 'Received')}</span></div>)}
       </div></section> : null}
     </>
   );
