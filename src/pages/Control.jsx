@@ -22,7 +22,8 @@ function QItem({ i }) {
 
 // ---------------- overview ----------------
 export function Overview() {
-  const { vm, data, T, openInc } = useApp();
+  const { vm, data, T, openInc, go, setIncFilter } = useApp();
+  const toIncidents = f => { setIncFilter(f); go('incidents'); };
   const [qOpen, setQOpen] = useState(true);
   const [logOpen, setLogOpen] = useState(false);
   const list = vm.incidents, act = list.filter(i => i.active);
@@ -34,10 +35,10 @@ export function Overview() {
     <>
       <div className="ph"><div><h1>{T('ماذا يحدث الآن', 'What is happening now')}</h1></div></div>
       <section className="kpis" aria-label="KPIs">
-        <div className="kpi"><label>{T('حوادث نشطة', 'Active incidents')}</label><b>{act.length}</b><small>{T(`${list.filter(i => i.status === 'open').length} بانتظار القرار`, `${list.filter(i => i.status === 'open').length} awaiting decision`)}</small></div>
-        <div className="kpi"><label>{T('عالية الخطورة', 'High severity')}</label><b style={{ color: 'var(--crit)' }}>{crit}</b><small>{T('تدخل فوري', 'immediate action')}</small></div>
-        <div className="kpi"><label>{T('قيد التنفيذ', 'In progress')}</label><b style={{ color: 'var(--info)' }}>{prog}</b><small>{T('فرق في الميدان', 'teams in the field')}</small></div>
-        <div className="kpi"><label>{T('مسارات مهيأة متأثرة', 'Accessible routes affected')}</label><b style={{ color: affected ? 'var(--access)' : 'var(--fg)' }}>{affected}</b><small>{T(`من ${data.routes.length} مسارات`, `of ${data.routes.length} routes`)}</small></div>
+        <button type="button" className="kpi" onClick={() => toIncidents('active')}><label>{T('حوادث نشطة', 'Active incidents')}</label><b>{act.length}</b><small>{T(`${list.filter(i => i.status === 'open').length} بانتظار القرار`, `${list.filter(i => i.status === 'open').length} awaiting decision`)}</small></button>
+        <button type="button" className="kpi" onClick={() => toIncidents('crit')}><label>{T('عالية الخطورة', 'High severity')}</label><b style={{ color: 'var(--crit)' }}>{crit}</b><small>{T('تدخل فوري', 'immediate action')}</small></button>
+        <button type="button" className="kpi" onClick={() => toIncidents('prog')}><label>{T('قيد التنفيذ', 'In progress')}</label><b style={{ color: 'var(--info)' }}>{prog}</b><small>{T('فرق في الميدان', 'teams in the field')}</small></button>
+        <button type="button" className="kpi" onClick={() => go('access')}><label>{T('مسارات مهيأة متأثرة', 'Accessible routes affected')}</label><b style={{ color: affected ? 'var(--access)' : 'var(--fg)' }}>{affected}</b><small>{T(`من ${data.routes.length} مسارات`, `of ${data.routes.length} routes`)}</small></button>
       </section>
       <div className="ov">
         <section className="panel"><div className="panel-h"><div><h2>{T('خريطة المعرض الحية', 'Live Expo map')}</h2></div><MapLegend /></div>
@@ -99,10 +100,11 @@ export function MapPage() {
 
 // ---------------- incidents ----------------
 export function Incidents() {
-  const { vm, T, L, openInc } = useApp();
-  const [f, setF] = useState('active');
-  const F = [['all', ['الكل', 'All']], ['active', ['النشطة', 'Active']], ['open', ['بانتظار القرار', 'Awaiting decision']], ['prog', ['قيد التنفيذ', 'In progress']], ['resolved', ['المغلقة', 'Closed']]];
-  const fl = { active: i => i.active, open: i => i.status === 'open', prog: i => i.inProg, resolved: i => !i.active, all: () => true }[f];
+  const { vm, T, L, openInc, incFilter, setIncFilter } = useApp();
+  // the filter is kept in the app: the overview cards open this page on the matching one
+  const f = incFilter, setF = setIncFilter;
+  const F = [['all', ['الكل', 'All']], ['active', ['النشطة', 'Active']], ['open', ['بانتظار القرار', 'Awaiting decision']], ['crit', ['عالية الخطورة', 'High severity']], ['prog', ['قيد التنفيذ', 'In progress']], ['resolved', ['المغلقة', 'Closed']]];
+  const fl = { active: i => i.active, open: i => i.status === 'open', crit: i => i.active && i.sev === 'crit', prog: i => i.inProg, resolved: i => !i.active, all: () => true }[f] || (i => i.active);
   const list = vm.incidents.filter(fl).sort(vm.sortQ);
   return (
     <>

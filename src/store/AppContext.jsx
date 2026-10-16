@@ -37,6 +37,7 @@ export function AppProvider({ children }) {
   const [auth, setAuth] = useState(loadAuth);
   const [page, setPage] = useState(() => (loadAuth() ? (loadAuth().role === 'FIELD' ? 'mytasks' : 'overview') : 'welcome'));
   const [incId, setIncId] = useState(null);
+  const [incFilter, setIncFilter] = useState('active'); // incidents page filter (set by the overview cards)
   const [sel, setSel] = useState(null);
   const [mapFull, setMapFull] = useState(false);
   const [layers, setLayers] = useState({ incidents: true, staff: true, access: true, assets: true, gates: true });
@@ -354,7 +355,7 @@ export function AppProvider({ children }) {
 
   const value = {
     lang, setLang, theme, setTheme, T, L, auth, role, isField, isSup, me, login, logout,
-    page, go, setPage, incId, openInc, showOnMap, sel, setSel, toggleSel, mapFull, setMapFull, layers, setLayers,
+    page, go, setPage, incId, openInc, incFilter, setIncFilter, showOnMap, sel, setSel, toggleSel, mapFull, setMapFull, layers, setLayers,
     data, setData, loaded, live, flash, bell, unread, markBellRead, vm, getInc,
     toasts, toast, closeToast, modal, setModal, fail, run,
     loadAll, refreshIncident, refreshTasks, refreshStaff, refreshReporters, refreshActivity,

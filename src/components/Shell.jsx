@@ -24,7 +24,7 @@ export function Side() {
   const nav = (isField ? STAFF_NAV : NAV).map(([g, items]) => [g, items.filter(([k]) => k !== 'staffadmin' || isSup)]);
   return (
     <aside className="side">
-      <div className="brand"><Logo s={38} /><div><b>{T('رِفد', 'RIFD')}</b></div></div>
+      <div className="brand"><Logo s={46} /><div><b>{T('رِفد', 'RIFD')}</b></div></div>
       <nav className="nav">
         {nav.map(([lbl, items]) => (
           <div className="nav-g" key={lbl[1]}>

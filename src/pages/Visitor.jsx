@@ -119,6 +119,8 @@ function VisitorApp({ vauth, signOut }) {
     if (step === 2 && !d.zone && !d.unknown) { setErr(T('اختر المنطقة', 'Pick the zone')); return; }
     if (step < 3) { setStep(step + 1); setErr(''); window.scrollTo(0, 0); return; }
     if (review) { await confirm(); return; }
+    // the type alone is not a report (and "health issue" alone would open a HIGH incident): say what happened
+    if (!(d.desc || '').trim() && !hasMedia(media)) { setErr(T('اكتب وش صار، أو أرفق صورة أو تسجيل صوتي', 'Describe what happened, or attach a photo or a voice note')); return; }
     const t = VIS_TYPES[d.type];
     const text = `بلاغ زائر: ${t.n[0]}${d.spot ? ' — ' + d.spot.trim() : ''}${d.desc ? ': ' + d.desc.trim() : ''}`;
     setBusy(true); setErr('');
@@ -276,7 +278,7 @@ function VisitorApp({ vauth, signOut }) {
   return (
     <div className="vpage">
       <header className="vbar"><div className="vbar-in">
-        <button className="vbrand" onClick={() => go('home')}><Logo s={34} /><span><b>{T('إكسبو الزوار', 'Expo Visitors')}</b><small>EXPO 2030 RIYADH</small></span></button>
+        <button className="vbrand" onClick={() => go('home')}><Logo s={44} /><span><b>{T('إكسبو الزوار', 'Expo Visitors')}</b><small>EXPO 2030 RIYADH</small></span></button>
         <button className="vmenu-btn" aria-label={T('القائمة', 'Menu')} aria-expanded={menu} onClick={() => setMenu(m => !m)}><Icon n="menu" s={22} /></button>
       </div></header>
       <main className="vwrap">{body}</main>
